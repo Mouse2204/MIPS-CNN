@@ -1,0 +1,1044 @@
+	.data
+	
+input:	.asciiz		"input matrix.txt"
+output:	.asciiz		"output matrix.txt"
+input2:	.asciiz		"matrix.txt"
+matrix_input: .asciiz	"input matrix:"
+kernel_input: .asciiz	"Kernel input:"
+results_matrix:	.asciiz	"Results:"
+block:	.asciiz "|"
+descriptor:	.word       4
+n:	.space      4
+m:	.space      4
+p:	.space      4
+s:	.space      4
+image:	.space      4096	# Sufficient space for padded matrix
+kernel:	.space      256		# 16x16 max kernel size
+matrix_output:	.space	1024	# Output matrix space
+matrix_output_size:	.space	4
+buffer:	.space      1024
+char:	.space      1
+space:	.asciiz	" "
+newline:	.asciiz	"\n"
+invalid_msg:	.asciiz	"Error: size not match. "
+float_value:	.float	0.5
+float_value1:	.float	10.0
+float_value2:	.float	0.0
+buffer_out: 	.space 4096
+
+	.text
+	
+main:
+
+# Open input file	
+	li $v0, 13 
+	la $a0, input       
+	li $a1, 0         
+	syscall
+	la $t0, descriptor
+	sw $v0, 0($t0)
+
+# Read matrix parameters
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, n
+
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, m
+
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, p
+
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, s
+
+# Debug: Print n, m, p, s
+	lw $t0, n
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	lw $t0, m
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	lw $t0, p
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	lw $t0, s
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	la $a0, newline
+	li $v0, 4
+	syscall
+
+	la $a0, matrix_input
+	li $v0, 4
+	syscall
+	la $a0, newline
+	li $v0, 4
+	syscall
+#-----------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------- LOGIC---------------------------------------------------------------------------
+#_________________________________________________________________________________________________________________________________________
+	#Check range of parameters  
+	jal valid_parameters     
+
+	# Read matrices
+	jal read_image
+	jal read_kernel 	
+
+	# Debug Check padded matrix
+	jal debug_padded_image
+
+	# Debug Check kernel values
+	jal debug_kernel
+
+	# Calculate using convolution
+	jal convolution
+
+	# Debug Check output matrix
+	jal debug_output_matrix
+#_________________________________________________________________________________________________________________________________________
+
+#-----------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------------------
+
+# Open output file
+	li $v0, 13 
+	la $a0, output        
+	li $a1, 1         
+	li $a2, 0  
+	syscall
+	sw $v0, descriptor
+
+	# Write answer to output file
+	la $s0, matrix_output
+	lw $t0, matrix_output_size
+	li $t1, 0
+
+	write_result_rows:
+	beq $t1, $t0, finish_output
+	li $t2, 0
+
+	write_result_cols:
+	beq $t2, $t0, finish_row
+	
+	# Calculate offset and load value
+	mul $t3, $t1, $t0
+	add $t3, $t3, $t2
+	mul $t3, $t3, 4
+	add $t3, $s0, $t3
+	lwc1 $f0, 0($t3)
+	jal write_float  # Write float to file
+	
+	addi $t4, $t2, 1
+	beq $t4, $t0, nospace # if row reaches to its size , no space.
+	
+	# Write space
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, space
+	li $a2, 1
+	syscall
+	
+	nospace:
+	addi $t2, $t2, 1
+	j write_result_cols
+
+	finish_row:
+	# Write newline
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, newline
+	li $a2, 1
+	syscall
+	addi $t1, $t1, 1
+	j write_result_rows
+
+finish_output:
+	# Close output file
+	li $v0, 16    
+	lw $a0, descriptor 
+	syscall
+	
+	li $v0, 13
+	la $a0, input
+	li $a1, 0
+	syscall
+	move $6, $v0
+	j end_program
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------CALLER FUNCTION---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Debug Check kernel values
+
+debug_kernel:
+	la $t0, kernel
+	lw $t1, m
+	li $t3, 0
+
+	debug_kernel_row:
+	beq $t3, $t1, finish_debug_kernel
+	li $t4, 0
+ 
+	debug_kernel_col:
+	beq $t4, $t1, next_kernel_row
+	mul $t5, $t3, $t1
+	add $t5, $t5, $t4
+	mul $t5, $t5, 4
+	add $t5, $t0, $t5
+	lwc1 $f0, 0($t5)
+	mov.s $f12, $f0
+	li $v0, 2
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	la $a0, block
+	li $v0, 4
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	addi $t4, $t4, 1
+	j debug_kernel_col
+
+	next_kernel_row:
+	la $a0, newline
+	li $v0, 4
+	syscall	
+	 
+	addi $t3, $t3, 1
+	j debug_kernel_row
+
+finish_debug_kernel:
+	la $a0, results_matrix
+	li $v0, 4
+	syscall
+	la $a0, newline
+	li $v0, 4
+	syscall
+	jr $ra
+
+# Debug Check output matrix
+
+debug_output_matrix:
+	la $t0, matrix_output
+	lw $t1, matrix_output_size
+	li $t3, 0
+    
+	debug_output_row:
+	beq $t3, $t1, end_debug_output
+	li $t4, 0
+
+	debug_output_col:
+	la $t7, float_value1
+	lwc1 $f1, 0($t7) # move 10.0 to $f2
+	la $t6, float_value 
+	lwc1 $f2, 0($t6) # move 0.5 to $f2
+	la $t2, float_value2
+	lwc1 $f3, 0($t2) #move 0.0 to $f4
+	beq $t4, $t1, next_output_row
+	mul $t5, $t3, $t1
+	add $t5, $t5, $t4
+	mul $t5, $t5, 4
+	add $t5, $t0, $t5
+	lwc1 $f0, 0($t5)
+
+	# separate negative and positive value
+	
+	c.lt.s $f0, $f3 # compare $f0 with 0.0
+	bc1f positive_value
+    
+	#Round the first decimal number for negative number
+	neg.s $f2, $f2 # 0.5 to -0.5 in $f2
+	mul.s $f0, $f0, $f1 # multiply by 10
+	add.s $f0, $f0, $f2 # plus -0.5
+	trunc.w.s $f0, $f0 # take integer
+	cvt.s.w $f0, $f0 #convert to floating point
+	div.s $f0, $f0, $f1 # divide by 10
+	mov.s $f12, $f0
+	li $v0, 2
+	syscall
+	j end_round
+
+	positive_value:
+	# Round the first decimal number for positive number
+	mul.s $f0, $f0, $f1 # multiply by 10
+	add.s $f0, $f0, $f2 # plus 0.5
+	trunc.w.s $f0, $f0 # take integer
+	cvt.s.w $f0, $f0 #convert to floating point
+	div.s $f0, $f0, $f1 # divide by 10
+	mov.s $f12, $f0
+	li $v0, 2
+	syscall
+    
+	end_round:
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	la $a0, block
+	li $v0, 4
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	addi $t4, $t4, 1
+	j debug_output_col
+	    
+	next_output_row:
+	la $a0, newline
+	li $v0, 4
+	syscall
+	
+	addi $t3, $t3, 1
+	j debug_output_row
+	
+end_debug_output:
+	jr $ra
+    
+# debug padded for image
+
+debug_padded_image:
+	la $t0, image	# Base address of the original image matrix
+	lw $t1, n	# Load size of the original matrix (N)
+	li $t2, 0	# Padding size 
+	add $t3, $t1, $t2	# Calculate padded matrix size: N + P (top/bottom)
+	
+	# Initialize row index	
+	li $t4, 0	# Row index
+
+	padded_row_loop:
+	beq $t4, $t3, end_debug_padded_image	# Exit if row index reaches padded size
+
+	# Initialize column index
+	li $t5, 0	# Column index
+	
+	padded_col_loop:
+	beq $t5, $t3, next_padded_row	# Exit if column index reaches padded size
+	
+	# Calculate whether we are in the padding region
+	blt $t4, $t2, print_zero	# Top padding
+	bge $t4, $t1, print_zero	# Bottom padding
+	blt $t5, $t2, print_zero	# Left padding
+	bge $t5, $t1, print_zero	# Right padding
+
+	# Compute the original matrix offset
+	sub $t6, $t4, $t2	# Row in original matrix
+	sub $t7, $t5, $t2	# Column in original matrix
+	mul $t6, $t6, $t1	# Row offset = row * N
+	add $t6, $t6, $t7	# Add column offset
+	mul $t6, $t6, 4		# Convert to byte offset
+	add $t6, $t6, $t0	# Address in original matrix
+	lwc1 $f0, 0($t6)	# Load value from the original matrix
+	mov.s $f12, $f0
+	li $v0, 2	# Print float
+	syscall
+	j next_padded_col
+
+	print_zero:
+	mtc1 $zero, $f12	# Set floating-point register to 0.0
+	li $v0, 2	# Print float
+	syscall
+
+	next_padded_col:	
+	la $a0, space	# Print space
+	li $v0, 4
+	syscall
+	
+	la $a0, block
+	li $v0, 4
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	addi $t5, $t5, 1	# Increment column index
+	j padded_col_loop
+
+	next_padded_row:
+	la $a0, newline	# Print newline
+	li $v0, 4
+	syscall
+	addi $t4, $t4, 1	# Increment row index
+	j padded_row_loop
+
+end_debug_padded_image:
+	la $a0, kernel_input
+	li $v0, 4
+	syscall
+	
+	la $a0, newline
+	li $v0, 4
+	syscall
+	jr $ra	# Return to caller
+
+# -----------------------------------------------------------------------------------------------------------------
+# ---------------------------------------- Functions --------------------------------------------------------------
+# _________________________________________________________________________________________________________________
+
+read_float:
+# Read a string from file and convert to float and then store it in f0.
+# Use a0, a1, a2, v0, t0, t1, t2, t3, f1, f2.
+# Store the registers.
+	addi $sp, $sp, -4
+	sw $a0, 0($sp)
+	addi $sp, $sp, -4
+	sw $a1, 0($sp)
+	addi $sp, $sp, -4
+	sw $a2, 0($sp)
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	addi $sp, $sp, -4
+	sw $t3, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f1
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f2
+	sw $t0, 0($sp)
+
+	# Handle
+	mtc1 $zero, $f0		# result
+	li $t0, 0		# negative flag
+	li $t1, 0 		# decimal part flag
+	la $t2, float_value1
+	lwc1 $f1, 0($t2)	# 10.0 to $f1
+       
+read_float_loop:
+	# Next character
+	li $v0, 14
+	lw $a0, descriptor
+	la $a1, char
+	li $a2, 1
+	syscall
+	beqz $v0, finish_read_float_loop
+
+	lb $t2, char #$t2 = character
+
+	beq $t2, 13, read_float_loop	# Carriage Return (ASCII 13)
+	beq $t2, 23, read_float_loop 	# End of Transmission Block (ASCII 23)
+	beq $t2, ' ',  finish_read_float_loop	# Space
+	beq $t2, '\n',  finish_read_float_loop	# Newline
+	beq $t2, '\0', finish_read_float_loop	# Null terminator
+	beq $t2, ';',  finish_read_float_loop	# Semicolon
+	beq $t2, '\t',  finish_read_float_loop	# Tab
+
+	#check negative
+	bne $t2, '-', check_decimal
+	addi $t0, $t0, 1
+	j read_float_loop
+	
+check_decimal:
+	bne $t2, '.', Calculate
+	addi $t1, $t1, 1
+	j read_float_loop
+	
+Calculate:
+	sub $t2, $t2, '0'	# convert char to integer in ASCII
+	sw $t2, -44($fp) 
+	lwc1 $f2, -44($fp)	# $f2 = calculating integer
+	cvt.s.w $f2, $f2	# convert integer to float
+	beq $t1, 0, Calculate_integer
+	
+	# Calculate float
+	div.s $f2, $f2, $f1	# divide by 10
+	add.s $f0, $f0, $f2	 
+	lwc1 $f2, float_value1	# $f2 = 10.0 
+	mul.s $f1, $f1, $f2	# keep multiplying by 10 to $f1
+	j read_float_loop
+
+Calculate_integer:
+	# $f0 * 10 + $f2
+	mul.s $f0, $f0, $f1
+	add.s $f0, $f0, $f2
+	j read_float_loop
+	
+finish_read_float_loop:  
+	# Check if it negative  
+	beqz $t0, finish_read_float_all
+	li $t2, -1
+	mtc1 $t2, $f2
+	cvt.s.w $f2, $f2
+	mul.s $f0, $f0, $f2 
+
+finish_read_float_all:
+	# Restore registers
+	lw $t0, 0($sp)
+	mtc1 $t0, $f2
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	mtc1 $t0, $f1
+	addi $sp, $sp, 4
+	lw $t3, 0($sp)
+	addi $sp, $sp, 4
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
+	lw $t1, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	addi $sp, $sp, 4
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
+	lw $a2, 0($sp)
+	addi $sp, $sp, 4
+	lw $a1, 0($sp)
+	addi $sp, $sp, 4
+	lw $a0, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+# ___________________________________________________________________________________________
+read_image:
+# Read nxn value from file and then store it into image
+# Use a0, s0, s1, t0, t1, t2, t3, t4, f0
+# Store the registers
+	addi $sp, $sp, -4
+	sw $a0, 0($sp)
+	addi $sp, $sp, -4
+	sw $s0, 0($sp)
+	addi $sp, $sp, -4
+	sw $s1, 0($sp)
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	addi $sp, $sp, -4
+	sw $t3, 0($sp)
+	addi $sp, $sp, -4
+	sw $t4, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f0
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+
+	# Hanlde
+	la $a0, image
+	lw $t0, n
+	lw $t1, p
+	mul $t1, $t1, 2		
+	add $t0, $t0, $t1	#size of matrix if padded ( n + 2P )
+	mul $t0, $t0, 4		# total memory needed for matrix 
+	add $t0, $t0, $a0
+
+	#Initialize nxn matrix ( included padded ) with default value is 0.0.
+default_matrix:
+	beq $t0, $a0, finish_default_matrix
+	addi $t0, $t0, -4
+	sw $zero, 0($t0)  	
+	j default_matrix
+
+finish_default_matrix:
+	la $a0, image
+	lw $t0, n
+	lw $s0, p
+	addi $s1, $s0, 0	# $s1 = p
+	mul $s0, $s0, 2	
+	add $s0, $s0, $t0	# $s0 = n + 2p ( matrix size )
+	li $t1, 0		# row index
+
+read_image_loop1:
+	beq $t1, $t0, finish_read_image_loop1	# end if row reach nxn matrix 
+	li $t2, 0		# column index
+
+read_image_loop2:
+	beq $t2, $t0, finish_read_image_loop2	# end if column reach nxn matrix   
+	# read column
+	add $t3, $t1, $s1		
+	mul $t3, $t3, $s0	# calculate offset
+	add $t3, $t3, $t2
+	add $t3, $t3, $s1
+	mul $t3, $t3, 4
+	add $t3, $t3, $a0      
+	jal read_float
+ 
+	#Round the first decimal number to image.
+	la $t5, float_value1
+	lwc1 $f1, 0($t5)
+	la $t6, float_value
+	lwc1 $f2, 0($t6)
+	la $t7, float_value2
+	lwc1 $f3, 0($t7)
+            
+	c.lt.s $f0, $f3		# compare $f0 with 0.0
+	bc1f positive_number
+	
+	#for negative number
+	neg.s $f2, $f2
+	mul.s $f0, $f0, $f1
+	add.s $f0, $f0, $f2
+	trunc.w.s $f0, $f0
+	cvt.s.w $f0, $f0
+	div.s $f0, $f0, $f1
+	j end_round2
+           
+	positive_number:
+	mul.s $f0, $f0, $f1
+	add.s $f0, $f0, $f2
+	trunc.w.s $f0, $f0
+	cvt.s.w $f0, $f0
+	div.s $f0, $f0, $f1
+
+	end_round2:
+	mfc1 $t4, $f0
+	sw $t4, 0($t3)       
+	addi $t2, $t2, 1
+	j read_image_loop2
+	
+finish_read_image_loop2:
+	addi $t1, $t1, 1
+	j read_image_loop1
+
+finish_read_image_loop1:  
+	sw $s0, n
+	# Restore registers
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	mtc1 $t0, $f0
+	addi $sp, $sp, 4
+	lw $t4, 0($sp)
+	addi $sp, $sp, 4
+	lw $t3, 0($sp)
+	addi $sp, $sp, 4
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
+	lw $t1, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	addi $sp, $sp, 4
+	lw $s1, 0($sp)
+	addi $sp, $sp, 4
+	lw $s0, 0($sp)
+	addi $sp, $sp, 4
+	lw $a0, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+
+# ___________________________________________________________________________________________
+read_kernel:
+# Read mxm values from file and then store it into kernel
+# Use a0, t0, t1, t2, t3, t4, t5, t6, f0 
+# Store the registers
+	addi $sp, $sp, -4
+	sw $a0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	addi $sp, $sp, -4
+	sw $t3, 0($sp)
+	addi $sp, $sp, -4
+	sw $t4, 0($sp)
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	addi $sp, $sp, -4
+	sw $t6, 0($sp)
+	addi $sp, $sp, -4
+	mfc1 $t0, $f0
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+
+	# Initialize variables  
+	la $a0, kernel	# Load base address of kernel matrix
+	lw $t0, m	# Load kernel size (m)
+	mul $t5, $t0, $t0	# Calculate total elements (m * m) and store in t5
+	li $t1, 0	# Initialize row index
+	li $t6, 0	# Initialize counter for elements read
+
+read_kernel_loop1:
+	beq $t6, $t5, finish_read_kernel_loop1	# Exit when t6 (elements read) reaches m * m
+	li $t2, 0	# Initialize column index
+
+read_kernel_loop2:
+	beq $t6, $t5, finish_read_kernel_loop1	# Exit if we reach the required count
+	beq $t2, $t0, finish_read_kernel_loop2	# End of row
+	
+	# Calculate the address in the kernel matrix
+	mul $t3, $t1, $t0	# Row offset (t1 * m)
+	add $t3, $t3, $t2	# Add column index
+	mul $t3, $t3, 4		# Multiply by 4 (each element is 4 bytes)
+	add $t3, $a0, $t3	# Add base address of kernel
+	
+	# Read float from file and store in kernel
+	jal read_float		# Call read_float to get next float in f0
+	
+	#Round the first decimal number to image.
+	lwc1 $f1, float_value1
+	lwc1 $f2, float_value
+	lwc1 $f3, float_value2
+            
+	c.lt.s $f0, $f3		# compare $f0 with 0.0
+	bc1f positive_number2
+	
+	#for negative number
+	neg.s $f2, $f2
+	mul.s $f0, $f0, $f1
+	add.s $f0, $f0, $f2
+	trunc.w.s $f0, $f0
+	cvt.s.w $f0, $f0
+	div.s $f0, $f0, $f1
+	j end_round3
+           
+	positive_number2:
+	mul.s $f0, $f0, $f1
+	add.s $f0, $f0, $f2
+	trunc.w.s $f0, $f0
+	cvt.s.w $f0, $f0
+	div.s $f0, $f0, $f1   
+	
+	end_round3:
+	mfc1 $t4, $f0 		# Move float value from f0 to integer register t4
+	sw $t4, 0($t3)		# Store the value in the kernel matrix
+	addi $t2, $t2, 1	# Increment column index
+	addi $t6, $t6, 1	# Increment elements read counter
+	j read_kernel_loop2	# Jump back to read next column element
+
+finish_read_kernel_loop2:
+	addi $t1, $t1, 1	# Increment row index
+	j read_kernel_loop1	# Jump back to read next row
+
+finish_read_kernel_loop1:
+	# Restore the registers
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	mtc1 $t0, $f0
+	addi $sp, $sp, 4
+	lw $t6, 0($sp)
+	addi $sp, $sp, 4
+	lw $t5, 0($sp)
+	addi $sp, $sp, 4
+	lw $t4, 0($sp)
+	addi $sp, $sp, 4
+	lw $t3, 0($sp)
+	addi $sp, $sp, 4
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
+	lw $t1, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	addi $sp, $sp, 4
+	lw $a0, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+
+convolution:
+	# Base addresses
+	la $t0, image	# padded image
+	la $t1, kernel	# kernel
+	la $t2, matrix_output	# output
+	# Load parameters
+	lw $t3, n	# n
+	lw $t4, m	# m
+	lw $t5, p	# padding
+	lw $t6, s	# stride
+	
+	# Compute output size: ((N - M) / S) + 1
+	sub $t7, $t3, $t4	# N - M
+	div $t7, $t7, $t6	# N  - M / S
+	addi $t7, $t7, 1	# Add 1
+	sw $t7, matrix_output_size	# Store output size
+
+	# Loop through output matrix
+	li $t8, 0	# Output row index
+
+	row_loop:
+	beq $t8, $t7, finish_convolution
+	li $t9, 0	# Output col index
+
+	col_loop:
+	beq $t9, $t7, next_row
+	# Initialize sum
+	mtc1 $zero, $f0		# Reset sum
+
+	# Loop through kernel
+	li $s0, 0 	# Kernel row
+
+	kernel_row:
+	beq $s0, $t4, finish_kernel_row
+	li $s1, 0	# Kernel col
+
+	kernel_col:
+	beq $s1, $t4, next_kernel_row1
+	
+	# Compute image index
+	mul $s2, $t8, $t6	# Row output x stride
+	add $s2, $s2, $s0	# Add kernel row
+	mul $s3, $t9, $t6	# Col output x stride
+	add $s3, $s3, $s1	# Add kernel col
+	mul $s2, $s2, $t3	# Row x image width
+	add $s2, $s2, $s3	# Add col
+	mul $s2, $s2, 4		# Byte offset
+	add $s2, $t0, $s2	# Add base address
+	lwc1 $f1, 0($s2)	# Load image value
+
+	# Compute kernel index
+	mul $s3, $s0, $t4	# Kernel row x width
+	add $s3, $s3, $s1	# Add kernel col
+	mul $s3, $s3, 4		# Byte offset
+	add $s3, $t1, $s3	# Add base address
+	lwc1 $f2, 0($s3)	# Load kernel value
+
+	# Multiply and accumulate
+	mul.s $f3, $f1, $f2
+	add.s $f0, $f0, $f3
+	addi $s1, $s1, 1	# Next kernel col
+	j kernel_col
+
+	next_kernel_row1:
+	addi $s0, $s0, 1	# Next kernel row
+	j kernel_row
+
+	finish_kernel_row:
+	# Store result
+	mul $s0, $t8, $t7	# Row x output width
+	add $s0, $s0, $t9	# Add col
+	mul $s0, $s0, 4		# Byte offset
+	add $s0, $t2, $s0	# Add base address
+	swc1 $f0, 0($s0)	# Store result
+	addi $t9, $t9, 1	# Next output col
+	j col_loop
+
+	next_row:
+	addi $t8, $t8, 1	# Next output row
+	j row_loop
+
+finish_convolution:
+	jr $ra
+
+# ___________________________________________________________________________________________
+write_float:
+# write float value which is stored in f0 to file
+# Use a0, a1, a2, v0, t0, t1, t2, t3, t4, f0, f1
+# Store the registers
+	addi $sp, $sp, -4
+	sw $a0, 0($sp)
+	addi $sp, $sp, -4
+	sw $a1, 0($sp)
+	addi $sp, $sp, -4
+	sw $a2, 0($sp)
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	addi $sp, $sp, -4
+	sw $t3, 0($sp)
+	addi $sp, $sp, -4
+	sw $t4, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f0
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f1
+	sw $t0, 0($sp)
+
+	# Handle
+	la $a0, buffer
+	li $t0, 0 
+	li $t1, 10
+	lwc1 $f1, float_value1	# $f1 = 10.0
+	
+	#round to first decimal
+	mul.s $f0, $f0, $f1
+	round.w.s $f0, $f0
+	mfc1 $t1, $f0	# $t1 = converting value
+
+	li $t4, 0
+	blt $t1, $zero, check_negative
+	j positive_checked
+
+check_negative:
+	li $t4, 1	# Negative flag
+	mul $t1, $t1, -1	
+
+positive_checked:    
+	li $t2, 10
+	div $t1, $t2
+	mflo $t1
+	mfhi $t2 
+    
+loop_decimal:
+	li $t3, 10
+	div $t1, $t3 
+	mflo $t1
+	mfhi $t3
+        
+	addi $t3, $t3, '0'
+	addi $sp, $sp, -1
+	sb $t3, 0($sp)
+	addi $t0, $t0, 1
+        
+	bnez $t1, loop_decimal      
+	beqz $t4, finish_negative
+	addi $sp, $sp, -1
+	addi $t3, $zero, '-'
+	sb $t3, 0($sp)
+	addi $t0, $t0, 1
+
+finish_negative:
+	add $t3, $zero, $t0
+    
+write_revert:
+	beqz $t3, write_revert_done
+	lb $t4, 0($sp)
+	addi $sp, $sp, 1
+	sb $t4, 0($a0)
+	addi $a0, $a0, 1
+	addi $t3, $t3, -1
+	j write_revert
+
+write_revert_done:
+	addi $t3, $zero, '.'
+	sb $t3, 0($a0)
+	addi $a0, $a0, 1
+	addi $t0, $t0, 1  
+	addi $t2, $t2, '0'
+	sb $t2, 0($a0)
+	addi $a0, $a0, 1
+	addi $t0, $t0, 1
+    
+	# Write buffer to file
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, buffer
+	add $a2, $zero, $t0
+	syscall
+    
+	# Restore registers
+	lw $t0, 0($sp)
+	mtc1 $t0, $f1
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	mtc1 $t0, $f0
+	addi $sp, $sp, 4
+	lw $t4, 0($sp)
+	addi $sp, $sp, 4
+	lw $t3, 0($sp)
+	addi $sp, $sp, 4
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
+	lw $t1, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	addi $sp, $sp, 4
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
+	lw $a2, 0($sp)
+	addi $sp, $sp, 4
+	lw $a1, 0($sp)
+	addi $sp, $sp, 4
+	lw $a0, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+# ___________________________________________________________________________________________
+
+valid_parameters:
+	lw $t0, n	# Load n
+	lw $t1, m	# Load m
+	lw $t2, p	# Load p
+	lw $t3, s	# Load s
+
+	# Check N: 3 <= N <= 7
+	li $t4, 3
+	li $t5, 7
+	blt $t0, $t4, invalid_input
+	bgt $t0, $t5, invalid_input
+	
+	# Check M: 2 <= M <= 4
+	li $t4, 2
+	li $t5, 4
+	blt $t1, $t4, invalid_input
+	bgt $t1, $t5, invalid_input
+
+	# Check P: 0 <= P <= 4
+	li $t4, 0
+	li $t5, 4
+	blt $t2, $t4, invalid_input
+	bgt $t2, $t5, invalid_input
+
+	# Check S: 1 <= S <= 3
+	li $t4, 1
+	li $t5, 3
+	blt $t3, $t4, invalid_input
+	bgt $t3, $t5, invalid_input
+
+	# If all valid, return
+	jr $ra
+
+invalid_input:
+
+	li $v0, 13 
+	la $a0, output        
+	li $a1, 1         
+	li $a2, 0  
+	syscall
+	sw $v0, descriptor
+
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, invalid_msg
+	li $a2, 23
+	syscall
+	
+	li $v0, 16
+	move $a0, $s6
+	syscall
+	
+	la $a0, invalid_msg     # Load error message
+	li $v0, 4               # Print message
+	syscall
+	
+end_program:
+	li $v0, 10
+	syscall
