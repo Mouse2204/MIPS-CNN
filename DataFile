@@ -1,0 +1,27 @@
+	.data
+	
+input:	.asciiz		"input matrix.txt"
+output:	.asciiz		"output matrix.txt"
+input2:	.asciiz		"matrix.txt"
+matrix_input: .asciiz	"input matrix:"
+kernel_input: .asciiz	"Kernel input:"
+results_matrix:	.asciiz	"Results:"
+block:	.asciiz "|"
+descriptor:	.word       4
+n:	.space      4
+m:	.space      4
+p:	.space      4
+s:	.space      4
+image:	.space      4096	# Sufficient space for padded matrix
+kernel:	.space      256		# 16x16 max kernel size
+matrix_output:	.space	1024	# Output matrix space
+matrix_output_size:	.space	4
+buffer:	.space      1024
+char:	.space      1
+space:	.asciiz	" "
+newline:	.asciiz	"\n"
+invalid_msg:	.asciiz	"Error: size not match. "
+float_value:	.float	0.5
+float_value1:	.float	10.0
+float_value2:	.float	0.0
+buffer_out: 	.space 4096
