@@ -1,0 +1,188 @@
+write_float:
+# write float value which is stored in f0 to file
+# Use a0, a1, a2, v0, t0, t1, t2, t3, t4, f0, f1
+# Store the registers
+	addi $sp, $sp, -4
+	sw $a0, 0($sp)
+	addi $sp, $sp, -4
+	sw $a1, 0($sp)
+	addi $sp, $sp, -4
+	sw $a2, 0($sp)
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	addi $sp, $sp, -4
+	sw $t3, 0($sp)
+	addi $sp, $sp, -4
+	sw $t4, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f0
+	sw $t0, 0($sp)
+	addi $sp, $sp, -4 
+	mfc1 $t0, $f1
+	sw $t0, 0($sp)
+
+	# Handle
+	la $a0, buffer
+	li $t0, 0 
+	li $t1, 10
+	lwc1 $f1, float_value1	# $f1 = 10.0
+	
+	#round to first decimal
+	mul.s $f0, $f0, $f1
+	round.w.s $f0, $f0
+	mfc1 $t1, $f0	# $t1 = converting value
+
+	li $t4, 0
+	blt $t1, $zero, check_negative
+	j positive_checked
+
+check_negative:
+	li $t4, 1	# Negative flag
+	mul $t1, $t1, -1	
+
+positive_checked:    
+	li $t2, 10
+	div $t1, $t2
+	mflo $t1
+	mfhi $t2 
+    
+loop_decimal:
+	li $t3, 10
+	div $t1, $t3 
+	mflo $t1
+	mfhi $t3
+        
+	addi $t3, $t3, '0'
+	addi $sp, $sp, -1
+	sb $t3, 0($sp)
+	addi $t0, $t0, 1
+        
+	bnez $t1, loop_decimal      
+	beqz $t4, finish_negative
+	addi $sp, $sp, -1
+	addi $t3, $zero, '-'
+	sb $t3, 0($sp)
+	addi $t0, $t0, 1
+
+finish_negative:
+	add $t3, $zero, $t0
+    
+write_revert:
+	beqz $t3, write_revert_done
+	lb $t4, 0($sp)
+	addi $sp, $sp, 1
+	sb $t4, 0($a0)
+	addi $a0, $a0, 1
+	addi $t3, $t3, -1
+	j write_revert
+
+write_revert_done:
+	addi $t3, $zero, '.'
+	sb $t3, 0($a0)
+	addi $a0, $a0, 1
+	addi $t0, $t0, 1  
+	addi $t2, $t2, '0'
+	sb $t2, 0($a0)
+	addi $a0, $a0, 1
+	addi $t0, $t0, 1
+    
+	# Write buffer to file
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, buffer
+	add $a2, $zero, $t0
+	syscall
+    
+	# Restore registers
+	lw $t0, 0($sp)
+	mtc1 $t0, $f1
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	mtc1 $t0, $f0
+	addi $sp, $sp, 4
+	lw $t4, 0($sp)
+	addi $sp, $sp, 4
+	lw $t3, 0($sp)
+	addi $sp, $sp, 4
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
+	lw $t1, 0($sp)
+	addi $sp, $sp, 4
+	lw $t0, 0($sp)
+	addi $sp, $sp, 4
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
+	lw $a2, 0($sp)
+	addi $sp, $sp, 4
+	lw $a1, 0($sp)
+	addi $sp, $sp, 4
+	lw $a0, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+# ___________________________________________________________________________________________
+
+valid_parameters:
+	lw $t0, n	# Load n
+	lw $t1, m	# Load m
+	lw $t2, p	# Load p
+	lw $t3, s	# Load s
+
+	# Check N: 3 <= N <= 7
+	li $t4, 3
+	li $t5, 7
+	blt $t0, $t4, invalid_input
+	bgt $t0, $t5, invalid_input
+	
+	# Check M: 2 <= M <= 4
+	li $t4, 2
+	li $t5, 4
+	blt $t1, $t4, invalid_input
+	bgt $t1, $t5, invalid_input
+
+	# Check P: 0 <= P <= 4
+	li $t4, 0
+	li $t5, 4
+	blt $t2, $t4, invalid_input
+	bgt $t2, $t5, invalid_input
+
+	# Check S: 1 <= S <= 3
+	li $t4, 1
+	li $t5, 3
+	blt $t3, $t4, invalid_input
+	bgt $t3, $t5, invalid_input
+
+	# If all valid, return
+	jr $ra
+
+invalid_input:
+
+	li $v0, 13 
+	la $a0, output        
+	li $a1, 1         
+	li $a2, 0  
+	syscall
+	sw $v0, descriptor
+
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, invalid_msg
+	li $a2, 23
+	syscall
+	
+	li $v0, 16
+	move $a0, $s6
+	syscall
+	
+	la $a0, invalid_msg     # Load error message
+	li $v0, 4               # Print message
+	syscall
+	
+end_program:
+	li $v0, 10
+	syscall
