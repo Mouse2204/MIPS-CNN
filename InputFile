@@ -1,0 +1,98 @@
+
+# Open input file	
+	li $v0, 13 
+	la $a0, input       
+	li $a1, 0         
+	syscall
+	la $t0, descriptor
+	sw $v0, 0($t0)
+
+# Read matrix parameters
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, n
+
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, m
+
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, p
+
+	jal read_float
+	cvt.w.s $f0, $f0
+	mfc1 $t0, $f0
+	sw $t0, s
+
+# Debug: Print n, m, p, s
+	lw $t0, n
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	lw $t0, m
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	lw $t0, p
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	lw $t0, s
+	li $v0, 1
+	move $a0, $t0
+	syscall
+	la $a0, space
+	li $v0, 4
+	syscall
+
+	la $a0, newline
+	li $v0, 4
+	syscall
+
+	la $a0, matrix_input
+	li $v0, 4
+	syscall
+	la $a0, newline
+	li $v0, 4
+	syscall
+#-----------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------- LOGIC---------------------------------------------------------------------------
+#_________________________________________________________________________________________________________________________________________
+	#Check range of parameters  
+	jal valid_parameters     
+
+	# Read matrices
+	jal read_image
+	jal read_kernel 	
+
+	# Debug Check padded matrix
+	jal debug_padded_image
+
+	# Debug Check kernel values
+	jal debug_kernel
+
+	# Calculate using convolution
+	jal convolution
+
+	# Debug Check output matrix
+	jal debug_output_matrix
+#_________________________________________________________________________________________________________________________________________
+
+#-----------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------------------
