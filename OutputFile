@@ -1,0 +1,283 @@
+# Open output file
+	li $v0, 13 
+	la $a0, output        
+	li $a1, 1         
+	li $a2, 0  
+	syscall
+	sw $v0, descriptor
+
+	# Write answer to output file
+	la $s0, matrix_output
+	lw $t0, matrix_output_size
+	li $t1, 0
+
+	write_result_rows:
+	beq $t1, $t0, finish_output
+	li $t2, 0
+
+	write_result_cols:
+	beq $t2, $t0, finish_row
+	
+	# Calculate offset and load value
+	mul $t3, $t1, $t0
+	add $t3, $t3, $t2
+	mul $t3, $t3, 4
+	add $t3, $s0, $t3
+	lwc1 $f0, 0($t3)
+	jal write_float  # Write float to file
+	
+	addi $t4, $t2, 1
+	beq $t4, $t0, nospace # if row reaches to its size , no space.
+	
+	# Write space
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, space
+	li $a2, 1
+	syscall
+	
+	nospace:
+	addi $t2, $t2, 1
+	j write_result_cols
+
+	finish_row:
+	# Write newline
+	li $v0, 15
+	lw $a0, descriptor
+	la $a1, newline
+	li $a2, 1
+	syscall
+	addi $t1, $t1, 1
+	j write_result_rows
+
+finish_output:
+	# Close output file
+	li $v0, 16    
+	lw $a0, descriptor 
+	syscall
+	
+	li $v0, 13
+	la $a0, input
+	li $a1, 0
+	syscall
+	move $6, $v0
+	j end_program
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------CALLER FUNCTION---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Debug Check kernel values
+
+debug_kernel:
+	la $t0, kernel
+	lw $t1, m
+	li $t3, 0
+
+	debug_kernel_row:
+	beq $t3, $t1, finish_debug_kernel
+	li $t4, 0
+ 
+	debug_kernel_col:
+	beq $t4, $t1, next_kernel_row
+	mul $t5, $t3, $t1
+	add $t5, $t5, $t4
+	mul $t5, $t5, 4
+	add $t5, $t0, $t5
+	lwc1 $f0, 0($t5)
+	mov.s $f12, $f0
+	li $v0, 2
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	la $a0, block
+	li $v0, 4
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	addi $t4, $t4, 1
+	j debug_kernel_col
+
+	next_kernel_row:
+	la $a0, newline
+	li $v0, 4
+	syscall	
+	 
+	addi $t3, $t3, 1
+	j debug_kernel_row
+
+finish_debug_kernel:
+	la $a0, results_matrix
+	li $v0, 4
+	syscall
+	la $a0, newline
+	li $v0, 4
+	syscall
+	jr $ra
+
+# Debug Check output matrix
+
+debug_output_matrix:
+	la $t0, matrix_output
+	lw $t1, matrix_output_size
+	li $t3, 0
+    
+	debug_output_row:
+	beq $t3, $t1, end_debug_output
+	li $t4, 0
+
+	debug_output_col:
+	la $t7, float_value1
+	lwc1 $f1, 0($t7) # move 10.0 to $f2
+	la $t6, float_value 
+	lwc1 $f2, 0($t6) # move 0.5 to $f2
+	la $t2, float_value2
+	lwc1 $f3, 0($t2) #move 0.0 to $f4
+	beq $t4, $t1, next_output_row
+	mul $t5, $t3, $t1
+	add $t5, $t5, $t4
+	mul $t5, $t5, 4
+	add $t5, $t0, $t5
+	lwc1 $f0, 0($t5)
+
+	# separate negative and positive value
+	
+	c.lt.s $f0, $f3 # compare $f0 with 0.0
+	bc1f positive_value
+    
+	#Round the first decimal number for negative number
+	neg.s $f2, $f2 # 0.5 to -0.5 in $f2
+	mul.s $f0, $f0, $f1 # multiply by 10
+	add.s $f0, $f0, $f2 # plus -0.5
+	trunc.w.s $f0, $f0 # take integer
+	cvt.s.w $f0, $f0 #convert to floating point
+	div.s $f0, $f0, $f1 # divide by 10
+	mov.s $f12, $f0
+	li $v0, 2
+	syscall
+	j end_round
+
+	positive_value:
+	# Round the first decimal number for positive number
+	mul.s $f0, $f0, $f1 # multiply by 10
+	add.s $f0, $f0, $f2 # plus 0.5
+	trunc.w.s $f0, $f0 # take integer
+	cvt.s.w $f0, $f0 #convert to floating point
+	div.s $f0, $f0, $f1 # divide by 10
+	mov.s $f12, $f0
+	li $v0, 2
+	syscall
+    
+	end_round:
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	la $a0, block
+	li $v0, 4
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	addi $t4, $t4, 1
+	j debug_output_col
+	    
+	next_output_row:
+	la $a0, newline
+	li $v0, 4
+	syscall
+	
+	addi $t3, $t3, 1
+	j debug_output_row
+	
+end_debug_output:
+	jr $ra
+    
+# debug padded for image
+
+debug_padded_image:
+	la $t0, image	# Base address of the original image matrix
+	lw $t1, n	# Load size of the original matrix (N)
+	li $t2, 0	# Padding size 
+	add $t3, $t1, $t2	# Calculate padded matrix size: N + P (top/bottom)
+	
+	# Initialize row index	
+	li $t4, 0	# Row index
+
+	padded_row_loop:
+	beq $t4, $t3, end_debug_padded_image	# Exit if row index reaches padded size
+
+	# Initialize column index
+	li $t5, 0	# Column index
+	
+	padded_col_loop:
+	beq $t5, $t3, next_padded_row	# Exit if column index reaches padded size
+	
+	# Calculate whether we are in the padding region
+	blt $t4, $t2, print_zero	# Top padding
+	bge $t4, $t1, print_zero	# Bottom padding
+	blt $t5, $t2, print_zero	# Left padding
+	bge $t5, $t1, print_zero	# Right padding
+
+	# Compute the original matrix offset
+	sub $t6, $t4, $t2	# Row in original matrix
+	sub $t7, $t5, $t2	# Column in original matrix
+	mul $t6, $t6, $t1	# Row offset = row * N
+	add $t6, $t6, $t7	# Add column offset
+	mul $t6, $t6, 4		# Convert to byte offset
+	add $t6, $t6, $t0	# Address in original matrix
+	lwc1 $f0, 0($t6)	# Load value from the original matrix
+	mov.s $f12, $f0
+	li $v0, 2	# Print float
+	syscall
+	j next_padded_col
+
+	print_zero:
+	mtc1 $zero, $f12	# Set floating-point register to 0.0
+	li $v0, 2	# Print float
+	syscall
+
+	next_padded_col:	
+	la $a0, space	# Print space
+	li $v0, 4
+	syscall
+	
+	la $a0, block
+	li $v0, 4
+	syscall
+	
+	la $a0, space
+	li $v0, 4
+	syscall
+	
+	addi $t5, $t5, 1	# Increment column index
+	j padded_col_loop
+
+	next_padded_row:
+	la $a0, newline	# Print newline
+	li $v0, 4
+	syscall
+	addi $t4, $t4, 1	# Increment row index
+	j padded_row_loop
+
+end_debug_padded_image:
+	la $a0, kernel_input
+	li $v0, 4
+	syscall
+	
+	la $a0, newline
+	li $v0, 4
+	syscall
+	jr $ra	# Return to caller
+
+# -----------------------------------------------------------------------------------------------------------------
+# ---------------------------------------- Functions --------------------------------------------------------------
+# _________________________________________________________________________________________________________________
